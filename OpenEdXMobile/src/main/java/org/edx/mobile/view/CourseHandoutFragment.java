@@ -1,10 +1,8 @@
 package org.edx.mobile.view;
 
 import android.annotation.SuppressLint;
-import android.content.Context;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
-import android.support.annotation.StringRes;
 import android.text.TextUtils;
 import android.util.Xml.Encoding;
 import android.view.LayoutInflater;
@@ -14,22 +12,20 @@ import android.webkit.WebView;
 import android.widget.TextView;
 
 import com.google.inject.Inject;
-import com.joanzapata.iconify.Icon;
-import com.joanzapata.iconify.IconDrawable;
 import com.joanzapata.iconify.fonts.FontAwesomeIcons;
 
 import org.edx.mobile.R;
 import org.edx.mobile.base.BaseFragment;
 import org.edx.mobile.core.IEdxEnvironment;
 import org.edx.mobile.event.NetworkConnectivityChangeEvent;
-import org.edx.mobile.http.callback.CallTrigger;
 import org.edx.mobile.http.callback.ErrorHandlingOkCallback;
+import org.edx.mobile.http.notifications.FullScreenErrorNotification;
 import org.edx.mobile.http.provider.OkHttpClientProvider;
 import org.edx.mobile.logger.Logger;
 import org.edx.mobile.model.api.EnrolledCoursesResponse;
 import org.edx.mobile.model.api.HandoutModel;
-import org.edx.mobile.module.analytics.AnalyticsRegistry;
 import org.edx.mobile.module.analytics.Analytics;
+import org.edx.mobile.module.analytics.AnalyticsRegistry;
 import org.edx.mobile.util.NetworkUtil;
 import org.edx.mobile.util.WebViewUtil;
 import org.edx.mobile.view.custom.URLInterceptorWebViewClient;
@@ -60,6 +56,8 @@ public class CourseHandoutFragment extends BaseFragment {
     @InjectView(R.id.no_coursehandout_tv)
     private TextView errorTextView;
 
+    private FullScreenErrorNotification errorNotification;
+
     private boolean isHandoutFetched;
 
     @Override
@@ -79,18 +77,14 @@ public class CourseHandoutFragment extends BaseFragment {
     @Override
     public void onViewCreated(View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        errorNotification = new FullScreenErrorNotification(webview, errorTextView);
         new URLInterceptorWebViewClient(getActivity(), webview).setAllLinksAsExternal(true);
     }
 
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
-
-        if (!(NetworkUtil.isConnected(getActivity()))) {
-            showErrorMessage(R.string.reset_no_network_message, FontAwesomeIcons.fa_wifi);
-        } else {
-            loadData();
-        }
+        loadData();
     }
 
     private void loadData() {
@@ -99,7 +93,7 @@ public class CourseHandoutFragment extends BaseFragment {
                 .get()
                 .build())
                 .enqueue(new ErrorHandlingOkCallback<HandoutModel>(getActivity(),
-                        HandoutModel.class, CallTrigger.LOADING_CACHED) {
+                        HandoutModel.class, errorNotification) {
                     @Override
                     protected void onResponse(@NonNull final HandoutModel result) {
                         if (getActivity() == null) {
@@ -109,8 +103,8 @@ public class CourseHandoutFragment extends BaseFragment {
                         if (!TextUtils.isEmpty(result.handouts_html)) {
                             populateHandouts(result);
                         } else {
-                            CourseHandoutFragment.this.showErrorMessage(R.string.no_handouts_to_display,
-                                    FontAwesomeIcons.fa_exclamation_circle);
+                            errorNotification.showError(R.string.no_handouts_to_display,
+                                    FontAwesomeIcons.fa_exclamation_circle, 0, null);
                         }
                         isHandoutFetched = true;
                     }
@@ -124,8 +118,6 @@ public class CourseHandoutFragment extends BaseFragment {
                         }
 
                         isHandoutFetched = false;
-                        CourseHandoutFragment.this.showErrorMessage(R.string.no_handouts_to_display,
-                                FontAwesomeIcons.fa_exclamation_circle);
                     }
                 });
     }
@@ -154,28 +146,10 @@ public class CourseHandoutFragment extends BaseFragment {
                 hideErrorMessage();
                 loadData();
             } else {
-                showErrorMessage(R.string.reset_no_network_message, FontAwesomeIcons.fa_wifi);
+                errorNotification.showError(R.string.reset_no_network_message,
+                        FontAwesomeIcons.fa_wifi, 0, null);
             }
         }
-    }
-
-    /**
-     * Shows the error message with and optional top icon, if the web page failed to load
-     *
-     * @param errorMsg  The error message to show
-     * @param errorIcon The error icon to show with the error message
-     */
-    private void showErrorMessage(@StringRes int errorMsg, @NonNull Icon errorIcon) {
-        webview.setVisibility(View.GONE);
-        Context context = getContext();
-        errorTextView.setVisibility(View.VISIBLE);
-        errorTextView.setText(errorMsg);
-        errorTextView.setCompoundDrawablesWithIntrinsicBounds(null,
-                new IconDrawable(context, errorIcon)
-                        .sizeRes(context, R.dimen.content_unavailable_error_icon_size)
-                        .colorRes(context, R.color.edx_brand_gray_back),
-                null, null
-        );
     }
 
     private void hideErrorMessage() {

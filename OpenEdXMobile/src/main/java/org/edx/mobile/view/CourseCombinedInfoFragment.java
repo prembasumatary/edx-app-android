@@ -10,17 +10,19 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CompoundButton;
 import android.widget.Switch;
+import android.widget.TextView;
 
 import com.facebook.Settings;
 import com.facebook.widget.LikeView;
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Inject;
+import com.joanzapata.iconify.fonts.FontAwesomeIcons;
 
 import org.edx.mobile.R;
 import org.edx.mobile.base.BaseFragment;
 import org.edx.mobile.core.IEdxEnvironment;
-import org.edx.mobile.http.callback.CallTrigger;
 import org.edx.mobile.http.callback.ErrorHandlingOkCallback;
+import org.edx.mobile.http.notifications.FullScreenErrorNotification;
 import org.edx.mobile.http.provider.OkHttpClientProvider;
 import org.edx.mobile.logger.Logger;
 import org.edx.mobile.model.api.AnnouncementsModel;
@@ -29,7 +31,6 @@ import org.edx.mobile.module.facebook.IUiLifecycleHelper;
 import org.edx.mobile.social.facebook.FacebookProvider;
 import org.edx.mobile.util.StandardCharsets;
 import org.edx.mobile.util.WebViewUtil;
-import org.edx.mobile.view.common.TaskProgressCallback;
 import org.edx.mobile.view.custom.EdxWebView;
 import org.edx.mobile.view.custom.URLInterceptorWebViewClient;
 
@@ -37,6 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import okhttp3.Request;
+import roboguice.inject.InjectView;
 
 public class CourseCombinedInfoFragment extends BaseFragment {
 
@@ -57,6 +59,11 @@ public class CourseCombinedInfoFragment extends BaseFragment {
 
     @Inject
     private OkHttpClientProvider okHttpClientProvider;
+
+    @InjectView(R.id.no_announcement_tv)
+    private TextView errorTextView;
+
+    private FullScreenErrorNotification errorNotification;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -88,6 +95,12 @@ public class CourseCombinedInfoFragment extends BaseFragment {
         notificationSwitch = (Switch) view.findViewById(R.id.notification_switch);
 
         return view;
+    }
+
+    @Override
+    public void onViewCreated(View view, Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        errorNotification = new FullScreenErrorNotification(announcementWebView, errorTextView);
     }
 
     @Override
@@ -186,71 +199,41 @@ public class CourseCombinedInfoFragment extends BaseFragment {
                 .url(enrollment.getCourse().getCourse_updates())
                 .get()
                 .build())
-                .enqueue(new ErrorHandlingOkCallback<List<AnnouncementsModel>>(
-                        getActivity(),
-                        new TypeToken<List<AnnouncementsModel>>() {},
-                        CallTrigger.LOADING_CACHED,
-                        new TaskProgressCallback.ProgressViewController(
-                                getView().findViewById(R.id.loading_indicator))) {
+                .enqueue(new ErrorHandlingOkCallback<List<AnnouncementsModel>>(getActivity(),
+                        new TypeToken<List<AnnouncementsModel>>() {
+                        }, errorNotification) {
                     @Override
-                    protected void onResponse(
-                            @NonNull final List<AnnouncementsModel> announcementsList) {
+                    protected void onResponse(final List<AnnouncementsModel> announcementsList) {
                         savedAnnouncements = announcementsList;
-                        populateAnnouncements(announcementsList);
-                    }
-
-                    @Override
-                    protected void onFailure(@NonNull final Throwable error) {
-                        super.onFailure(error);
-                        showEmptyAnnouncementMessage();
+                        if (announcementsList != null && announcementsList.size() > 0) {
+                            populateAnnouncements(announcementsList);
+                        } else {
+                            errorNotification.showError(R.string.no_announcements_to_display,
+                                    FontAwesomeIcons.fa_exclamation_circle, 0, null);
+                        }
                     }
                 });
 
     }
 
-    private void populateAnnouncements(List<AnnouncementsModel> announcementsList) {
-        if (announcementsList != null && announcementsList.size() > 0) {
-            hideEmptyAnnouncementMessage();
+    private void populateAnnouncements(@NonNull List<AnnouncementsModel> announcementsList) {
+        errorTextView.setVisibility(View.GONE);
 
-            StringBuilder buff = WebViewUtil.getIntialWebviewBuffer(getActivity(), logger);
+        StringBuilder buff = WebViewUtil.getIntialWebviewBuffer(getActivity(), logger);
 
-            buff.append("<body>");
-            for (AnnouncementsModel model : announcementsList) {
-                buff.append("<div class=\"header\">");
-                buff.append(model.getDate());
-                buff.append("</div>");
-                buff.append("<div class=\"separator\"></div>");
-                buff.append("<div>");
-                buff.append(model.getContent());
-                buff.append("</div>");
-            }
-            buff.append("</body>");
-
-            announcementWebView.clearCache(true);
-            announcementWebView.loadDataWithBaseURL(environment.getConfig().getApiHostURL(), buff.toString(), "text/html", StandardCharsets.UTF_8.name(), null);
-        } else {
-            showEmptyAnnouncementMessage();
+        buff.append("<body>");
+        for (AnnouncementsModel model : announcementsList) {
+            buff.append("<div class=\"header\">");
+            buff.append(model.getDate());
+            buff.append("</div>");
+            buff.append("<div class=\"separator\"></div>");
+            buff.append("<div>");
+            buff.append(model.getContent());
+            buff.append("</div>");
         }
-    }
+        buff.append("</body>");
 
-    public void showEmptyAnnouncementMessage() {
-        try {
-            if (getView() != null) {
-                getView().findViewById(R.id.no_announcement_tv).setVisibility(View.VISIBLE);
-            }
-        } catch (Exception e) {
-            logger.error(e);
-        }
-
-    }
-
-    private void hideEmptyAnnouncementMessage() {
-        try {
-            if (getView() != null) {
-                getView().findViewById(R.id.no_announcement_tv).setVisibility(View.GONE);
-            }
-        } catch (Exception e) {
-            logger.error(e);
-        }
+        announcementWebView.clearCache(true);
+        announcementWebView.loadDataWithBaseURL(environment.getConfig().getApiHostURL(), buff.toString(), "text/html", StandardCharsets.UTF_8.name(), null);
     }
 }

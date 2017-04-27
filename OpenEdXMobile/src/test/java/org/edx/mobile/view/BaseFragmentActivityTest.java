@@ -24,6 +24,7 @@ import android.widget.TextView;
 
 import org.edx.mobile.R;
 import org.edx.mobile.base.BaseFragmentActivity;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.robolectric.Robolectric;
 import org.robolectric.RuntimeEnvironment;
@@ -93,6 +94,7 @@ public abstract class BaseFragmentActivityTest extends UiTest {
      */
     @Test
     @Config(sdk = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    @Ignore
     public void updateActionBarShadowTest() {
         BaseFragmentActivity activity =
                 Robolectric.buildActivity(getActivityClass())
